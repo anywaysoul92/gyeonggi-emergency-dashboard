@@ -2,8 +2,7 @@
 
 경기도 응급의료기관의 **지역별 분포와 형평성**을 한눈에 보여주어 **응급의료 사각지대**(자원 부족 지역)를 드러내는 대시보드입니다.
 
-**🔗 라이브 데모**: `https://<본인-깃허브-아이디>.github.io/gyeonggi-emergency-dashboard/`
-(배포 후 위 주소의 `<본인-깃허브-아이디>`를 실제 아이디로 바꿔 적으세요.)
+**🔗 라이브 데모**: https://anywaysoul92.github.io/gyeonggi-emergency-dashboard/
 
 ---
 

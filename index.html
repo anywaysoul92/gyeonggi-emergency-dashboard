@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>경기도 응급의료 자원 분포 대시보드</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root{
+    --primary:#0066FF; --primary-strong:#005EEB; --primary-soft:#9EC5FF;
+    --text:#171719; --text-sub:#5A5C63; --bg-alt:#F7F7F8; --line:#E1E2E4;
+    --red:#FF4242; --red-strong:#E52222; --green:#00BF40; --orange:#FF9200;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:#FFFFFF; color:var(--text);
+    font-family:"Wanted Sans Variable","Pretendard Variable",Pretendard,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:32px 24px 60px;}
+  h1{font-size:30px; font-weight:800; margin:0 0 2px;}
+  .subtitle{color:var(--text-sub); font-size:15px; margin:0 0 4px;}
+  .note{color:var(--text-sub); font-size:13px; margin-bottom:24px;}
+  .kpi-row{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px;}
+  .card{background:#FFF; border:1px solid var(--line); border-radius:16px; padding:20px 22px; box-shadow:0 1px 2px rgba(0,0,0,.04);}
+  .kpi-label{font-size:14px; color:var(--text-sub); font-weight:500; margin-bottom:8px;}
+  .kpi-value{font-size:34px; font-weight:700; line-height:1.1;}
+  .kpi-unit{font-size:15px; font-weight:600; color:var(--text-sub); margin-left:4px;}
+  .kpi-sub{font-size:12px; color:var(--text-sub); margin-top:6px;}
+  .grid{display:grid; grid-template-columns:1.4fr 1fr; gap:20px; align-items:start;}
+  .sect-title{font-size:19px; font-weight:700; margin:2px 0;}
+  .sect-desc{font-size:13px; color:var(--text-sub); margin-bottom:8px;}
+  .badge{display:inline-block; background:var(--bg-alt); border:1px solid var(--line); border-radius:8px; padding:6px 10px; margin:4px 5px 0 0; font-size:13px; font-weight:600;}
+  .blind{border-color:var(--red); background:#FFF5F5; margin-top:20px;}
+  .blind .sect-title{color:var(--red-strong);}
+  details{margin-top:20px; background:var(--bg-alt); border:1px solid var(--line); border-radius:12px; padding:14px 18px;}
+  summary{font-weight:700; cursor:pointer;}
+  details li{font-size:14px; color:var(--text-sub); margin:6px 0;}
+  @media(max-width:860px){.kpi-row{grid-template-columns:repeat(2,1fr);} .grid{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🚑 경기도 응급의료 자원 분포</h1>
+  <p class="subtitle">어느 지역에 응급의료 자원이 부족한가 — 사각지대와 형평성을 한눈에</p>
+  <p class="note">본 데이터(응급의료기관현황) 기준 · 실시간 수용가능 정보는 2단계에서 결합 예정</p>
+
+  <div class="kpi-row">
+    <div class="card"><div class="kpi-label">총 응급의료기관</div><div class="kpi-value">72<span class="kpi-unit">개</span></div><div class="kpi-sub">경기도 전체 자원 규모</div></div>
+    <div class="card"><div class="kpi-label">권역응급의료센터</div><div class="kpi-value" style="color:var(--primary)">9<span class="kpi-unit">개</span></div><div class="kpi-sub">중증대응 최상위 등급</div></div>
+    <div class="card"><div class="kpi-label">응급의료 사각지대</div><div class="kpi-value" style="color:var(--red-strong)">6<span class="kpi-unit">개 시군</span></div><div class="kpi-sub">경기도 31개 시군 중 기관 0곳</div></div>
+    <div class="card"><div class="kpi-label">인구 10만명당 평균</div><div class="kpi-value">0.53<span class="kpi-unit">개</span></div><div class="kpi-sub">형평성 기준선</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="sect-title">시군별 인구 10만명당 응급의료기관 수</div>
+      <div class="sect-desc">위쪽일수록 인구 대비 자원이 풍부, 아래쪽일수록 부족. 빨간 막대는 기관 0곳(사각지대).</div>
+      <div id="chart-equity" style="height:760px;"></div>
+    </div>
+    <div class="card">
+      <div class="sect-title">등급 구성</div>
+      <div class="sect-desc">자원의 질적 구성 (중증대응 역량)</div>
+      <div id="chart-donut" style="height:360px;"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <div class="sect-title">이중 취약도 (구조 축)</div>
+    <div class="sect-desc">x=인구10만명당 기관수, y=총 기관수. 왼쪽 아래일수록 취약. 빨강=사각지대(기관 0곳). 밀집 구역 도시는 라벨을 생략했으니 점에 커서를 올려 확인하세요. 정확한 순위는 왼쪽 막대그래프 참조. 실시간(수용가능) 축은 2단계 결합.</div>
+    <div id="chart-scatter" style="height:500px;"></div>
+  </div>
+
+  <div class="card blind">
+    <div class="sect-title">⚠️ 응급의료 사각지대 — 기관 0곳 시군</div>
+    <div class="sect-desc">본 데이터 기준 응급의료기관이 없는 시군. 단, 인접 시군으로 접근 가능한 경우가 있어 '행정 지표'이며 실제 접근성과 다를 수 있음.</div>
+    <div id="blind-badges"></div>
+  </div>
+
+  <details>
+    <summary>데이터 한계 및 주의사항</summary>
+    <ul>
+      <li><b>실시간 정보 없음</b>: 병상 가용·수용가능 여부가 없어 1단계는 구조적 분석에 한정됩니다.</li>
+      <li><b>기관 규모 미반영</b>: 대형 권역센터와 소형 지역기관을 동일하게 1개로 셉니다(등급 차트로 부분 보정).</li>
+      <li><b>행정경계 집계</b>: 시군 사각지대는 행정 지표이며 실제 이송 접근성과 다를 수 있습니다.</li>
+      <li><b>인구 지표 한계</b>: 인구가 적은 시군(연천·포천 등)은 10만명당 수치가 과대평가될 수 있어 절대 기관 수와 함께 봐야 합니다.</li>
+      <li><b>인구 데이터</b>: 추정치이며 공식 주민등록인구로 교체 시 정확도가 올라갑니다.</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+const D = {
+  sigun: ["하남시","과천시","의왕시","가평군","동두천시","양주시","광주시","화성시","안양시","용인시","파주시","남양주시","김포시","오산시","이천시","수원시","부천시","구리시","시흥시","고양시","평택시","광명시","성남시","군포시","안산시","양평군","여주시","안성시","의정부시","포천시","연천군"],
+  per: [0,0,0,0,0,0,0.23,0.32,0.37,0.37,0.4,0.41,0.41,0.43,0.45,0.5,0.52,0.53,0.58,0.65,0.67,0.69,0.76,0.76,0.79,0.8,0.88,1.05,1.08,1.38,2.38],
+  cnt: [0,0,0,0,0,0,1,3,2,4,2,3,2,1,1,6,4,1,3,7,4,2,7,2,5,1,1,2,5,2,1],
+  grades: ["권역응급의료센터","지역응급의료센터","지역응급의료기관"],
+  gcnt: [9,33,30], avg: 0.53,
+  blind: ["하남시","과천시","의왕시","가평군","동두천시","양주시"]
+};
+const C = {primary:"#0066FF", primaryStrong:"#005EEB", primarySoft:"#9EC5FF",
+  red:"#FF4242", text:"#171719", sub:"#5A5C63", line:"#E1E2E4"};
+const FONT = {family:"Pretendard, sans-serif", color:C.text, size:13};
+const baseLayout = {font:FONT, paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)",
+  margin:{l:10,r:20,t:10,b:10}, showlegend:false};
+const cfg = {displayModeBar:false, responsive:true};
+
+// 차트1: 형평성 가로 막대. 평균선 제거(평균은 KPI 카드에 표기), 오른쪽 여백 확보로 값 안 잘리게
+const barColors = D.cnt.map(v => v===0 ? C.red : C.primary);
+Plotly.newPlot("chart-equity", [{
+  type:"bar", orientation:"h", x:D.per, y:D.sigun,
+  marker:{color:barColors}, text:D.per.map(v=>v.toFixed(2)), textposition:"outside", cliponaxis:false,
+  hovertemplate:"%{y}<br>인구10만명당 %{x}개<extra></extra>"
+}], Object.assign({}, baseLayout, {
+  height:760, margin:{l:20,r:70,t:10,b:45},
+  xaxis:{gridcolor:C.line, zeroline:false, range:[0,2.75], tickfont:{size:12}},
+  yaxis:{gridcolor:C.line, tickfont:{size:12}, automargin:true}
+}), cfg);
+
+// 차트2: 등급 도넛 — 이름은 아래 범례로, 조각엔 값만 가로 표시
+Plotly.newPlot("chart-donut", [{
+  type:"pie", labels:D.grades, values:D.gcnt, hole:0.62, sort:false,
+  marker:{colors:["#0066FF","#FF9200","#00BDDE"], line:{color:"#FFFFFF", width:2}},
+  textinfo:"value", textfont:{size:16, color:"#FFFFFF"}, insidetextorientation:"horizontal",
+  hovertemplate:"%{label}<br>%{value}개 (%{percent})<extra></extra>"
+}], Object.assign({}, baseLayout, {
+  height:360, showlegend:true,
+  legend:{orientation:"h", y:-0.02, x:0.5, xanchor:"center", font:{size:13}}
+}), cfg);
+
+// 차트3: 이중취약 산점도 — 겹침 완화(밀집 도시 라벨 생략+hover, 사각지대 분리)
+const hideLabel = new Set(["김포시","파주시","화성시","남양주시","오산시","이천시","구리시","안양시","군포시"]);
+const zeroX = [0, 0.05, 0.10, 0.15, 0.20, 0.25];
+const redTrace = {
+  type:"scatter", mode:"markers", name:"사각지대",
+  x:D.blind.map((_,i)=>zeroX[i]||0), y:D.blind.map(()=>0), customdata:D.blind,
+  marker:{size:13, color:C.red, line:{width:1.5, color:"#FFFFFF"}},
+  hovertemplate:"%{customdata}<br>기관 0곳 (사각지대)<extra></extra>"
+};
+const others = D.sigun.map((s,i)=>({s, per:D.per[i], cnt:D.cnt[i]})).filter(o=>o.cnt>0);
+const posCycle = ["top center","bottom center","middle right","middle left"];
+const blueTrace = {
+  type:"scatter", mode:"markers+text", name:"기관 보유 시군",
+  x:others.map(o=>o.per), y:others.map(o=>o.cnt),
+  text:others.map(o => hideLabel.has(o.s) ? "" : o.s),
+  customdata:others.map(o=>o.s),
+  textposition:others.map((_,i)=>posCycle[i%posCycle.length]), textfont:{size:11},
+  marker:{size:12, color:C.primary, line:{width:1, color:"#FFFFFF"}},
+  hovertemplate:"%{customdata}<br>인구10만명당 %{x}개 · 총 %{y}개<extra></extra>"
+};
+Plotly.newPlot("chart-scatter", [blueTrace, redTrace], Object.assign({}, baseLayout, {
+  height:500, showlegend:false, margin:{l:55,r:40,t:20,b:55},
+  xaxis:{title:"인구 10만명당 기관수", gridcolor:C.line, zeroline:false, range:[-0.15,2.65]},
+  yaxis:{title:"총 기관수", gridcolor:C.line, zeroline:false, range:[-0.7,7.8]},
+  annotations:[{x:0.13, y:0, ay:-36, ax:0, text:"◀ 사각지대 6곳 (좌하단)",
+    showarrow:true, arrowcolor:C.red, font:{color:C.red, size:12}}]
+}), cfg);
+
+document.getElementById("blind-badges").innerHTML =
+  D.blind.map(s => `<span class="badge">${s}</span>`).join("");
+</script>
+</body>
+</html>

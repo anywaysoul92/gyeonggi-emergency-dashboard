@@ -1,0 +1,9 @@
+# 비밀값(인증키 등) 커밋 금지
+.streamlit/secrets.toml
+*.key
+.env
+secrets.*
+
+__pycache__/
+*.pyc
+.DS_Store

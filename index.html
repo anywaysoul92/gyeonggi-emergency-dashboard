@@ -28,6 +28,8 @@
   .kpi-unit{font-size:15px; font-weight:600; color:var(--text-sub); margin-left:4px;}
   .kpi-sub{font-size:12px; color:var(--text-sub); margin-top:6px;}
   .grid{display:grid; grid-template-columns:1.4fr 1fr; gap:20px; align-items:start;}
+  #sigun-detail-card{position:sticky; top:16px; max-height:790px; overflow-y:auto;}
+  @media(max-width:860px){ #sigun-detail-card{position:static; max-height:none;} }
   .sect-title{font-size:19px; font-weight:700; margin:2px 0;}
   .sect-desc{font-size:13px; color:var(--text-sub); margin-bottom:8px;}
   .badge{display:inline-block; background:var(--bg-alt); border:1px solid var(--line); border-radius:8px; padding:6px 10px; margin:4px 5px 0 0; font-size:13px; font-weight:600;}
@@ -52,18 +54,27 @@
     <div class="card"><div class="kpi-label">인구 10만명당 평균</div><div class="kpi-value" id="kpi-avg">–<span class="kpi-unit">개</span></div><div class="kpi-sub">형평성 기준선</div></div>
   </div>
 
+  <div class="card" style="margin-bottom:20px;">
+    <div class="sect-title">등급 구성</div>
+    <div class="sect-desc">자원의 질적 구성 (중증대응 역량)</div>
+    <div id="grade-summary"></div>
+  </div>
+
   <div class="grid">
     <div class="card">
       <div class="sect-title">시군별 인구 10만명당 응급의료기관 수</div>
-      <div class="sect-desc">위쪽일수록 인구 대비 자원이 풍부, 아래쪽일수록 부족. 빨간 막대는 기관 0곳(사각지대). 막대를 클릭하면 그 시군의 병원 정보를 볼 수 있습니다.</div>
+      <div class="sect-desc">위쪽일수록 인구 대비 자원이 풍부, 아래쪽일수록 부족. 빨간 막대는 기관 0곳(사각지대).</div>
       <div class="sect-desc" id="equity-note" style="color:var(--text-sub);"></div>
       <div id="chart-equity" style="height:760px;"></div>
-      <div id="sigun-detail" style="margin-top:12px;"></div>
     </div>
-    <div class="card">
-      <div class="sect-title">등급 구성</div>
-      <div class="sect-desc">자원의 질적 구성 (중증대응 역량)</div>
-      <div id="chart-donut" style="height:360px;"></div>
+    <div class="card" id="sigun-detail-card">
+      <div class="sect-title">시군 정보</div>
+      <div class="sect-desc">왼쪽 그래프에서 시군을 클릭하면 병원 정보가 여기에 표시됩니다.</div>
+      <div id="sigun-detail">
+        <div class="kpi-sub" style="text-align:center; padding:32px 8px; color:var(--text-sub);">
+          👈 시군 막대를 클릭해보세요
+        </div>
+      </div>
     </div>
   </div>
 
@@ -215,16 +226,7 @@ function render(D) {
     renderSigunDetail(sigun, D);
   });
 
-  // 차트2: 등급 도넛 — 이름은 아래 범례로, 조각엔 값만 가로 표시
-  Plotly.newPlot("chart-donut", [{
-    type:"pie", labels:D.grades, values:D.gcnt, hole:0.62, sort:false,
-    marker:{colors:["#0066FF","#FF9200","#00BDDE"], line:{color:"#FFFFFF", width:2}},
-    textinfo:"value", textfont:{size:16, color:"#FFFFFF"}, insidetextorientation:"horizontal",
-    hovertemplate:"%{label}<br>%{value}개 (%{percent})<extra></extra>"
-  }], Object.assign({}, baseLayout, {
-    height:360, showlegend:true,
-    legend:{orientation:"h", y:-0.02, x:0.5, xanchor:"center", font:{size:13}}
-  }), cfg);
+  renderGradeSummary(D);
 
   // 차트3: 이중취약 산점도 — 겹침 완화(밀집 도시 라벨 생략+hover, 사각지대 분리)
   const hideLabel = new Set(["김포시","파주시","화성시","남양주시","오산시","이천시","구리시","안양시","군포시"]);
@@ -260,6 +262,24 @@ function render(D) {
 }
 
 const GRADE_RANK = {"권역응급의료센터":0, "지역응급의료센터":1, "지역응급의료기관":2};
+const GRADE_COLORS = ["#0066FF","#FF9200","#00BDDE"];
+
+function renderGradeSummary(D) {
+  const total = D.gcnt.reduce((a, b) => a + b, 0);
+  const segments = D.grades.map((g, i) => {
+    const pct = total ? (D.gcnt[i] / total * 100) : 0;
+    return `<div style="flex:${pct || 0.001}; background:${GRADE_COLORS[i]};" title="${g} ${D.gcnt[i]}개"></div>`;
+  }).join("");
+  const legend = D.grades.map((g, i) => `
+    <div style="display:flex; align-items:center; gap:6px;">
+      <span style="width:10px; height:10px; border-radius:50%; background:${GRADE_COLORS[i]}; display:inline-block;"></span>
+      <span>${g}</span><span style="font-weight:700;">${D.gcnt[i]}개</span>
+      <span class="kpi-sub">(${total ? Math.round(D.gcnt[i] / total * 100) : 0}%)</span>
+    </div>`).join("");
+  document.getElementById("grade-summary").innerHTML = `
+    <div style="display:flex; height:26px; border-radius:8px; overflow:hidden; margin-bottom:14px;">${segments}</div>
+    <div style="display:flex; gap:24px; flex-wrap:wrap; font-size:13px;">${legend}</div>`;
+}
 
 function hospitalCard(f, extraLine) {
   return `<div class="card" style="margin-top:8px; padding:14px 16px;">

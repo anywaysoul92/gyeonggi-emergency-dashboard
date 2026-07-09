@@ -46,10 +46,10 @@
   <p class="note">본 데이터(응급의료기관현황) 기준 · 실시간 수용가능 정보는 2단계에서 결합 예정</p>
 
   <div class="kpi-row">
-    <div class="card"><div class="kpi-label">총 응급의료기관</div><div class="kpi-value">72<span class="kpi-unit">개</span></div><div class="kpi-sub">경기도 전체 자원 규모</div></div>
-    <div class="card"><div class="kpi-label">권역응급의료센터</div><div class="kpi-value" style="color:var(--primary)">9<span class="kpi-unit">개</span></div><div class="kpi-sub">중증대응 최상위 등급</div></div>
-    <div class="card"><div class="kpi-label">응급의료 사각지대</div><div class="kpi-value" style="color:var(--red-strong)">6<span class="kpi-unit">개 시군</span></div><div class="kpi-sub">경기도 31개 시군 중 기관 0곳</div></div>
-    <div class="card"><div class="kpi-label">인구 10만명당 평균</div><div class="kpi-value">0.53<span class="kpi-unit">개</span></div><div class="kpi-sub">형평성 기준선</div></div>
+    <div class="card"><div class="kpi-label">총 응급의료기관</div><div class="kpi-value" id="kpi-total">–<span class="kpi-unit">개</span></div><div class="kpi-sub">경기도 전체 자원 규모</div></div>
+    <div class="card"><div class="kpi-label">권역응급의료센터</div><div class="kpi-value" id="kpi-region" style="color:var(--primary)">–<span class="kpi-unit">개</span></div><div class="kpi-sub">중증대응 최상위 등급</div></div>
+    <div class="card"><div class="kpi-label">응급의료 사각지대</div><div class="kpi-value" id="kpi-blind" style="color:var(--red-strong)">–<span class="kpi-unit">개 시군</span></div><div class="kpi-sub" id="kpi-blind-sub">경기도 시군 중 기관 0곳</div></div>
+    <div class="card"><div class="kpi-label">인구 10만명당 평균</div><div class="kpi-value" id="kpi-avg">–<span class="kpi-unit">개</span></div><div class="kpi-sub">형평성 기준선</div></div>
   </div>
 
   <div class="grid">
@@ -89,15 +89,50 @@
   </details>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-const D = {
-  sigun: ["하남시","과천시","의왕시","가평군","동두천시","양주시","광주시","화성시","안양시","용인시","파주시","남양주시","김포시","오산시","이천시","수원시","부천시","구리시","시흥시","고양시","평택시","광명시","성남시","군포시","안산시","양평군","여주시","안성시","의정부시","포천시","연천군"],
-  per: [0,0,0,0,0,0,0.23,0.32,0.37,0.37,0.4,0.41,0.41,0.43,0.45,0.5,0.52,0.53,0.58,0.65,0.67,0.69,0.76,0.76,0.79,0.8,0.88,1.05,1.08,1.38,2.38],
-  cnt: [0,0,0,0,0,0,1,3,2,4,2,3,2,1,1,6,4,1,3,7,4,2,7,2,5,1,1,2,5,2,1],
-  grades: ["권역응급의료센터","지역응급의료센터","지역응급의료기관"],
-  gcnt: [9,33,30], avg: 0.53,
-  blind: ["하남시","과천시","의왕시","가평군","동두천시","양주시"]
-};
+const SUPABASE_URL = "https://luwgxbdwneuxkwksatuc.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_hQbyRwadJAXHPkOAK4QwdQ_2UGOQ78m";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const GRADES = ["권역응급의료센터","지역응급의료센터","지역응급의료기관"];
+
+async function loadData() {
+  const [facRes, popRes] = await Promise.all([
+    sb.from("emergency_facilities").select("sigun_name, grade"),
+    sb.from("sigun_population").select("sigun_name, population"),
+  ]);
+  if (facRes.error) throw facRes.error;
+  if (popRes.error) throw popRes.error;
+
+  const fac = facRes.data;
+  const pop = popRes.data;
+
+  const cntBySigun = {};
+  fac.forEach(f => { cntBySigun[f.sigun_name] = (cntBySigun[f.sigun_name] || 0) + 1; });
+
+  const rows = pop.map(p => {
+    const cnt = cntBySigun[p.sigun_name] || 0;
+    return { sigun: p.sigun_name, cnt, per: Math.round((cnt / p.population) * 100000 * 100) / 100 };
+  }).sort((a, b) => a.per - b.per);
+
+  const totalPop = pop.reduce((s, p) => s + p.population, 0);
+  const gcnt = GRADES.map(g => fac.filter(f => f.grade === g).length);
+
+  return {
+    sigun: rows.map(r => r.sigun),
+    per: rows.map(r => r.per),
+    cnt: rows.map(r => r.cnt),
+    grades: GRADES,
+    gcnt,
+    avg: Math.round((fac.length / totalPop) * 100000 * 100) / 100,
+    blind: rows.filter(r => r.cnt === 0).map(r => r.sigun),
+    total: fac.length,
+    nRegion: gcnt[0],
+    totalSigun: pop.length,
+  };
+}
+
 const C = {primary:"#0066FF", primaryStrong:"#005EEB", primarySoft:"#9EC5FF",
   red:"#FF4242", text:"#171719", sub:"#5A5C63", line:"#E1E2E4"};
 const FONT = {family:"Pretendard, sans-serif", color:C.text, size:13};
@@ -105,59 +140,77 @@ const baseLayout = {font:FONT, paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba
   margin:{l:10,r:20,t:10,b:10}, showlegend:false};
 const cfg = {displayModeBar:false, responsive:true};
 
-// 차트1: 형평성 가로 막대. 평균선 제거(평균은 KPI 카드에 표기), 오른쪽 여백 확보로 값 안 잘리게
-const barColors = D.cnt.map(v => v===0 ? C.red : C.primary);
-Plotly.newPlot("chart-equity", [{
-  type:"bar", orientation:"h", x:D.per, y:D.sigun,
-  marker:{color:barColors}, text:D.per.map(v=>v.toFixed(2)), textposition:"outside", cliponaxis:false,
-  hovertemplate:"%{y}<br>인구10만명당 %{x}개<extra></extra>"
-}], Object.assign({}, baseLayout, {
-  height:760, margin:{l:20,r:70,t:10,b:45},
-  xaxis:{gridcolor:C.line, zeroline:false, range:[0,2.75], tickfont:{size:12}},
-  yaxis:{gridcolor:C.line, tickfont:{size:12}, automargin:true}
-}), cfg);
+function render(D) {
+  document.getElementById("kpi-total").innerHTML = `${D.total}<span class="kpi-unit">개</span>`;
+  document.getElementById("kpi-region").innerHTML = `${D.nRegion}<span class="kpi-unit">개</span>`;
+  document.getElementById("kpi-blind").innerHTML = `${D.blind.length}<span class="kpi-unit">개 시군</span>`;
+  document.getElementById("kpi-blind-sub").textContent = `경기도 ${D.totalSigun}개 시군 중 기관 0곳`;
+  document.getElementById("kpi-avg").innerHTML = `${D.avg}<span class="kpi-unit">개</span>`;
 
-// 차트2: 등급 도넛 — 이름은 아래 범례로, 조각엔 값만 가로 표시
-Plotly.newPlot("chart-donut", [{
-  type:"pie", labels:D.grades, values:D.gcnt, hole:0.62, sort:false,
-  marker:{colors:["#0066FF","#FF9200","#00BDDE"], line:{color:"#FFFFFF", width:2}},
-  textinfo:"value", textfont:{size:16, color:"#FFFFFF"}, insidetextorientation:"horizontal",
-  hovertemplate:"%{label}<br>%{value}개 (%{percent})<extra></extra>"
-}], Object.assign({}, baseLayout, {
-  height:360, showlegend:true,
-  legend:{orientation:"h", y:-0.02, x:0.5, xanchor:"center", font:{size:13}}
-}), cfg);
+  // 차트1: 형평성 가로 막대. 평균선 제거(평균은 KPI 카드에 표기), 오른쪽 여백 확보로 값 안 잘리게
+  const barColors = D.cnt.map(v => v===0 ? C.red : C.primary);
+  Plotly.newPlot("chart-equity", [{
+    type:"bar", orientation:"h", x:D.per, y:D.sigun,
+    marker:{color:barColors}, text:D.per.map(v=>v.toFixed(2)), textposition:"outside", cliponaxis:false,
+    hovertemplate:"%{y}<br>인구10만명당 %{x}개<extra></extra>"
+  }], Object.assign({}, baseLayout, {
+    height:760, margin:{l:20,r:70,t:10,b:45},
+    xaxis:{gridcolor:C.line, zeroline:false, range:[0, Math.max(2.75, Math.max(...D.per) * 1.15)], tickfont:{size:12}},
+    yaxis:{gridcolor:C.line, tickfont:{size:12}, automargin:true}
+  }), cfg);
 
-// 차트3: 이중취약 산점도 — 겹침 완화(밀집 도시 라벨 생략+hover, 사각지대 분리)
-const hideLabel = new Set(["김포시","파주시","화성시","남양주시","오산시","이천시","구리시","안양시","군포시"]);
-const zeroX = [0, 0.05, 0.10, 0.15, 0.20, 0.25];
-const redTrace = {
-  type:"scatter", mode:"markers", name:"사각지대",
-  x:D.blind.map((_,i)=>zeroX[i]||0), y:D.blind.map(()=>0), customdata:D.blind,
-  marker:{size:13, color:C.red, line:{width:1.5, color:"#FFFFFF"}},
-  hovertemplate:"%{customdata}<br>기관 0곳 (사각지대)<extra></extra>"
-};
-const others = D.sigun.map((s,i)=>({s, per:D.per[i], cnt:D.cnt[i]})).filter(o=>o.cnt>0);
-const posCycle = ["top center","bottom center","middle right","middle left"];
-const blueTrace = {
-  type:"scatter", mode:"markers+text", name:"기관 보유 시군",
-  x:others.map(o=>o.per), y:others.map(o=>o.cnt),
-  text:others.map(o => hideLabel.has(o.s) ? "" : o.s),
-  customdata:others.map(o=>o.s),
-  textposition:others.map((_,i)=>posCycle[i%posCycle.length]), textfont:{size:11},
-  marker:{size:12, color:C.primary, line:{width:1, color:"#FFFFFF"}},
-  hovertemplate:"%{customdata}<br>인구10만명당 %{x}개 · 총 %{y}개<extra></extra>"
-};
-Plotly.newPlot("chart-scatter", [blueTrace, redTrace], Object.assign({}, baseLayout, {
-  height:500, showlegend:false, margin:{l:55,r:40,t:20,b:55},
-  xaxis:{title:"인구 10만명당 기관수", gridcolor:C.line, zeroline:false, range:[-0.15,2.65]},
-  yaxis:{title:"총 기관수", gridcolor:C.line, zeroline:false, range:[-0.7,7.8]},
-  annotations:[{x:0.13, y:0, ay:-36, ax:0, text:"◀ 사각지대 6곳 (좌하단)",
-    showarrow:true, arrowcolor:C.red, font:{color:C.red, size:12}}]
-}), cfg);
+  // 차트2: 등급 도넛 — 이름은 아래 범례로, 조각엔 값만 가로 표시
+  Plotly.newPlot("chart-donut", [{
+    type:"pie", labels:D.grades, values:D.gcnt, hole:0.62, sort:false,
+    marker:{colors:["#0066FF","#FF9200","#00BDDE"], line:{color:"#FFFFFF", width:2}},
+    textinfo:"value", textfont:{size:16, color:"#FFFFFF"}, insidetextorientation:"horizontal",
+    hovertemplate:"%{label}<br>%{value}개 (%{percent})<extra></extra>"
+  }], Object.assign({}, baseLayout, {
+    height:360, showlegend:true,
+    legend:{orientation:"h", y:-0.02, x:0.5, xanchor:"center", font:{size:13}}
+  }), cfg);
 
-document.getElementById("blind-badges").innerHTML =
-  D.blind.map(s => `<span class="badge">${s}</span>`).join("");
+  // 차트3: 이중취약 산점도 — 겹침 완화(밀집 도시 라벨 생략+hover, 사각지대 분리)
+  const hideLabel = new Set(["김포시","파주시","화성시","남양주시","오산시","이천시","구리시","안양시","군포시"]);
+  const zeroX = [0, 0.05, 0.10, 0.15, 0.20, 0.25];
+  const redTrace = {
+    type:"scatter", mode:"markers", name:"사각지대",
+    x:D.blind.map((_,i)=>zeroX[i % zeroX.length]), y:D.blind.map(()=>0), customdata:D.blind,
+    marker:{size:13, color:C.red, line:{width:1.5, color:"#FFFFFF"}},
+    hovertemplate:"%{customdata}<br>기관 0곳 (사각지대)<extra></extra>"
+  };
+  const others = D.sigun.map((s,i)=>({s, per:D.per[i], cnt:D.cnt[i]})).filter(o=>o.cnt>0);
+  const posCycle = ["top center","bottom center","middle right","middle left"];
+  const blueTrace = {
+    type:"scatter", mode:"markers+text", name:"기관 보유 시군",
+    x:others.map(o=>o.per), y:others.map(o=>o.cnt),
+    text:others.map(o => hideLabel.has(o.s) ? "" : o.s),
+    customdata:others.map(o=>o.s),
+    textposition:others.map((_,i)=>posCycle[i%posCycle.length]), textfont:{size:11},
+    marker:{size:12, color:C.primary, line:{width:1, color:"#FFFFFF"}},
+    hovertemplate:"%{customdata}<br>인구10만명당 %{x}개 · 총 %{y}개<extra></extra>"
+  };
+  Plotly.newPlot("chart-scatter", [blueTrace, redTrace], Object.assign({}, baseLayout, {
+    height:500, showlegend:false, margin:{l:55,r:40,t:20,b:55},
+    xaxis:{title:"인구 10만명당 기관수", gridcolor:C.line, zeroline:false, range:[-0.15, Math.max(2.65, Math.max(...D.per) * 1.1)]},
+    yaxis:{title:"총 기관수", gridcolor:C.line, zeroline:false, range:[-0.7, Math.max(7.8, Math.max(...D.cnt) * 1.1)]},
+    annotations: D.blind.length ? [{x:0.13, y:0, ay:-36, ax:0, text:`◀ 사각지대 ${D.blind.length}곳 (좌하단)`,
+      showarrow:true, arrowcolor:C.red, font:{color:C.red, size:12}}] : []
+  }), cfg);
+
+  document.getElementById("blind-badges").innerHTML =
+    D.blind.length ? D.blind.map(s => `<span class="badge">${s}</span>`).join("")
+                   : `<span class="kpi-sub">(해당 없음)</span>`;
+}
+
+loadData()
+  .then(render)
+  .catch(err => {
+    console.error("Supabase fetch failed:", err);
+    document.querySelector(".wrap").insertAdjacentHTML("afterbegin",
+      `<div class="card blind"><div class="sect-title">⚠️ 데이터를 불러오지 못했습니다</div>
+       <div class="sect-desc">${err.message || err}</div></div>`);
+  });
 </script>
 </body>
 </html>

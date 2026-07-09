@@ -55,8 +55,10 @@
   <div class="grid">
     <div class="card">
       <div class="sect-title">시군별 인구 10만명당 응급의료기관 수</div>
-      <div class="sect-desc">위쪽일수록 인구 대비 자원이 풍부, 아래쪽일수록 부족. 빨간 막대는 기관 0곳(사각지대).</div>
+      <div class="sect-desc">위쪽일수록 인구 대비 자원이 풍부, 아래쪽일수록 부족. 빨간 막대는 기관 0곳(사각지대). 막대를 클릭하면 그 시군의 병원 정보를 볼 수 있습니다.</div>
+      <div class="sect-desc" id="equity-note" style="color:var(--text-sub);"></div>
       <div id="chart-equity" style="height:760px;"></div>
+      <div id="sigun-detail" style="margin-top:12px;"></div>
     </div>
     <div class="card">
       <div class="sect-title">등급 구성</div>
@@ -114,7 +116,7 @@ async function loadRealtimeBeds() {
 
 async function loadData() {
   const [facRes, popRes] = await Promise.all([
-    sb.from("emergency_facilities").select("sigun_name, grade"),
+    sb.from("emergency_facilities").select("sigun_name, facility_name, grade, phone, road_address, lat, lng"),
     sb.from("sigun_population").select("sigun_name, population"),
   ]);
   if (facRes.error) throw facRes.error;
@@ -122,13 +124,15 @@ async function loadData() {
 
   const fac = facRes.data;
   const pop = popRes.data;
+  const popBySigun = {};
+  pop.forEach(p => { popBySigun[p.sigun_name] = p.population; });
 
   const cntBySigun = {};
   fac.forEach(f => { cntBySigun[f.sigun_name] = (cntBySigun[f.sigun_name] || 0) + 1; });
 
   const rows = pop.map(p => {
     const cnt = cntBySigun[p.sigun_name] || 0;
-    return { sigun: p.sigun_name, cnt, per: Math.round((cnt / p.population) * 100000 * 100) / 100 };
+    return { sigun: p.sigun_name, cnt, population: p.population, per: Math.round((cnt / p.population) * 100000 * 100) / 100 };
   }).sort((a, b) => a.per - b.per);
 
   const totalPop = pop.reduce((s, p) => s + p.population, 0);
@@ -138,6 +142,7 @@ async function loadData() {
     sigun: rows.map(r => r.sigun),
     per: rows.map(r => r.per),
     cnt: rows.map(r => r.cnt),
+    population: rows.map(r => r.population),
     grades: GRADES,
     gcnt,
     avg: Math.round((fac.length / totalPop) * 100000 * 100) / 100,
@@ -145,7 +150,28 @@ async function loadData() {
     total: fac.length,
     nRegion: gcnt[0],
     totalSigun: pop.length,
+    facilities: fac,
+    popBySigun,
   };
+}
+
+// 사각지대(기관 0곳) 시군의 대표 지점 — 시청/군청 근사 좌표(공식 소스 아님, 참고용).
+const BLIND_SIGUN_CENTER = {
+  "하남시": [37.5393, 127.2148],
+  "과천시": [37.4292, 126.9877],
+  "의왕시": [37.3444, 126.9684],
+  "가평군": [37.8313, 127.5097],
+  "동두천시": [37.9036, 127.0605],
+  "양주시": [37.7853, 127.0456],
+};
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 const C = {primary:"#0066FF", primaryStrong:"#005EEB", primarySoft:"#9EC5FF",
@@ -165,16 +191,29 @@ function render(D) {
   // 차트1: 형평성 가로 막대. 평균선 제거(평균은 KPI 카드에 표기), 오른쪽 여백 확보로 값 안 잘리게
   const barColors = D.cnt.map(v => v===0 ? C.red : C.primary);
   const labelColors = D.cnt.map(v => v===0 ? C.redStrong : C.text);
+  const equityCustom = D.sigun.map((_, i) => [D.cnt[i], D.population[i].toLocaleString()]);
   Plotly.newPlot("chart-equity", [{
     type:"bar", orientation:"h", x:D.per, y:D.sigun,
     marker:{color:barColors}, text:D.per.map(v=>v.toFixed(2)), textposition:"outside", cliponaxis:false,
-    textfont:{color:labelColors},
-    hovertemplate:"%{y}<br>인구10만명당 %{x}개<extra></extra>"
+    textfont:{color:labelColors}, customdata:equityCustom,
+    hovertemplate:"%{y}<br>인구10만명당 %{x}개<br>기관 %{customdata[0]}곳 · 인구 %{customdata[1]}명<extra></extra>"
   }], Object.assign({}, baseLayout, {
     height:760, margin:{l:20,r:70,t:10,b:45},
     xaxis:{gridcolor:C.line, zeroline:false, range:[0, Math.max(2.75, Math.max(...D.per) * 1.15)], tickfont:{size:12}},
     yaxis:{gridcolor:C.line, tickfont:{size:12}, automargin:true}
   }), cfg);
+
+  // 인구가 적어 비율이 극단적으로 높게 나온 시군을 상단에서 바로 설명 (예: 연천군 2.38 → 인구가 적어서)
+  const topIdx = D.per.length - 1;
+  if (D.per[topIdx] > D.avg * 2) {
+    document.getElementById("equity-note").textContent =
+      `참고: ${D.sigun[topIdx]}은 인구가 ${(D.population[topIdx]/10000).toFixed(1)}만명으로 적어, 기관 ${D.cnt[topIdx]}곳만으로도 인구 10만명당 수치(${D.per[topIdx]}개)가 가장 높게 나타납니다. 자원이 가장 풍부하다는 뜻이 아니라 인구 대비 계산의 특성입니다.`;
+  }
+
+  document.getElementById("chart-equity").on("plotly_click", (evt) => {
+    const sigun = evt.points[0].y;
+    renderSigunDetail(sigun, D);
+  });
 
   // 차트2: 등급 도넛 — 이름은 아래 범례로, 조각엔 값만 가로 표시
   Plotly.newPlot("chart-donut", [{
@@ -218,6 +257,45 @@ function render(D) {
   document.getElementById("blind-badges").innerHTML =
     D.blind.length ? D.blind.map(s => `<span class="badge">${s}</span>`).join("")
                    : `<span class="kpi-sub">(해당 없음)</span>`;
+}
+
+const GRADE_RANK = {"권역응급의료센터":0, "지역응급의료센터":1, "지역응급의료기관":2};
+
+function hospitalCard(f, extraLine) {
+  return `<div class="card" style="margin-top:8px; padding:14px 16px;">
+    <div style="font-weight:700;">${f.facility_name} <span class="kpi-sub" style="font-weight:500;">${f.grade}</span></div>
+    <div class="kpi-sub" style="margin-top:4px;">${f.road_address || "주소 정보 없음"}</div>
+    <div class="kpi-sub">${f.phone ? `☎ ${f.phone}` : "전화번호 정보 없음"}</div>
+    ${extraLine ? `<div class="kpi-sub" style="color:var(--primary); margin-top:2px;">${extraLine}</div>` : ""}
+  </div>`;
+}
+
+function renderSigunDetail(sigun, D) {
+  const el = document.getElementById("sigun-detail");
+  const inSigun = D.facilities
+    .filter(f => f.sigun_name === sigun)
+    .sort((a, b) => (GRADE_RANK[a.grade] ?? 9) - (GRADE_RANK[b.grade] ?? 9));
+
+  if (inSigun.length) {
+    el.innerHTML = `<div class="sect-title" style="font-size:16px;">${sigun} 응급의료기관 (${inSigun.length}곳)</div>`
+      + inSigun.map(f => hospitalCard(f)).join("");
+    return;
+  }
+
+  const center = BLIND_SIGUN_CENTER[sigun];
+  if (!center) {
+    el.innerHTML = `<div class="kpi-sub">${sigun}에는 기관이 없고, 참조 좌표도 없어 가까운 병원을 계산할 수 없습니다.</div>`;
+    return;
+  }
+  const withDist = D.facilities
+    .filter(f => f.lat && f.lng)
+    .map(f => ({ f, km: haversineKm(center[0], center[1], f.lat, f.lng) }))
+    .sort((a, b) => a.km - b.km)
+    .slice(0, 3);
+
+  el.innerHTML = `<div class="sect-title" style="font-size:16px; color:var(--red-strong);">${sigun}에는 응급의료기관이 없습니다 — 가장 가까운 병원</div>
+    <div class="kpi-sub">시청/군청 기준 직선거리 근사치입니다 (실제 이송 경로·거리와 다를 수 있음).</div>`
+    + withDist.map(({f, km}) => hospitalCard(f, `${f.sigun_name} · 약 ${km.toFixed(1)}km`)).join("");
 }
 
 function minutesAgo(iso) {

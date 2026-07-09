@@ -263,22 +263,24 @@ function render(D) {
 
 const GRADE_RANK = {"권역응급의료센터":0, "지역응급의료센터":1, "지역응급의료기관":2};
 const GRADE_COLORS = ["#0066FF","#FF9200","#00BDDE"];
+const GRADE_SHORT = {"권역응급의료센터":"권역", "지역응급의료센터":"지역센터", "지역응급의료기관":"지역기관"};
 
 function renderGradeSummary(D) {
   const total = D.gcnt.reduce((a, b) => a + b, 0);
   const segments = D.grades.map((g, i) => {
     const pct = total ? (D.gcnt[i] / total * 100) : 0;
-    return `<div style="flex:${pct || 0.001}; background:${GRADE_COLORS[i]};" title="${g} ${D.gcnt[i]}개"></div>`;
+    const roundedPct = total ? Math.round(pct) : 0;
+    // 좁은 구간(권역)은 등급명을 빼고 개수만 표기해 겹치지 않게 한다.
+    const label = pct >= 20
+      ? `${GRADE_SHORT[g]} ${D.gcnt[i]}개 (${roundedPct}%)`
+      : `${GRADE_SHORT[g]} ${D.gcnt[i]}개`;
+    return `<div style="flex:${pct || 0.001}; background:${GRADE_COLORS[i]}; display:flex; align-items:center; justify-content:center;"
+      title="${g} ${D.gcnt[i]}개 (${roundedPct}%)">
+      <span style="color:#fff; font-size:13px; font-weight:700; white-space:nowrap; padding:0 4px;">${label}</span>
+    </div>`;
   }).join("");
-  const legend = D.grades.map((g, i) => `
-    <div style="display:flex; align-items:center; gap:6px;">
-      <span style="width:10px; height:10px; border-radius:50%; background:${GRADE_COLORS[i]}; display:inline-block;"></span>
-      <span>${g}</span><span style="font-weight:700;">${D.gcnt[i]}개</span>
-      <span class="kpi-sub">(${total ? Math.round(D.gcnt[i] / total * 100) : 0}%)</span>
-    </div>`).join("");
-  document.getElementById("grade-summary").innerHTML = `
-    <div style="display:flex; height:26px; border-radius:8px; overflow:hidden; margin-bottom:14px;">${segments}</div>
-    <div style="display:flex; gap:24px; flex-wrap:wrap; font-size:13px;">${legend}</div>`;
+  document.getElementById("grade-summary").innerHTML =
+    `<div style="display:flex; height:40px; border-radius:8px; overflow:hidden;">${segments}</div>`;
 }
 
 function hospitalCard(f, extraLine) {

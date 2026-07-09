@@ -43,7 +43,7 @@
 <div class="wrap">
   <h1>🚑 경기도 응급의료 자원 분포</h1>
   <p class="subtitle">어느 지역에 응급의료 자원이 부족한가 — 사각지대와 형평성을 한눈에</p>
-  <p class="note">본 데이터(응급의료기관현황) 기준 · 실시간 수용가능 정보는 2단계에서 결합 예정</p>
+  <p class="note">본 데이터(응급의료기관현황) 기준</p>
 
   <div class="kpi-row">
     <div class="card"><div class="kpi-label">총 응급의료기관</div><div class="kpi-value" id="kpi-total">–<span class="kpi-unit">개</span></div><div class="kpi-sub">경기도 전체 자원 규모</div></div>
@@ -67,13 +67,13 @@
 
   <div class="card" style="margin-top:20px;">
     <div class="sect-title">이중 취약도 (구조 축)</div>
-    <div class="sect-desc">x=인구10만명당 기관수, y=총 기관수. 왼쪽 아래일수록 취약. 빨강=사각지대(기관 0곳). 밀집 구역 도시는 라벨을 생략했으니 점에 커서를 올려 확인하세요. 정확한 순위는 왼쪽 막대그래프 참조. 실시간(수용가능) 축은 2단계 결합.</div>
+    <div class="sect-desc">x=인구10만명당 기관수, y=총 기관수. 왼쪽 아래일수록 취약. 빨강=사각지대(기관 0곳). 밀집 지역은 라벨을 생략했으니 점에 커서를 올려 확인하세요.</div>
     <div id="chart-scatter" style="height:500px;"></div>
   </div>
 
   <div class="card" style="margin-top:20px;">
-    <div class="sect-title">실시간 응급실 가용병상 (경기도, 2단계)</div>
-    <div class="sect-desc" id="realtime-desc">응급의료정보제공(E-Gen) API 기준. 병원이 직접 입력한 시각이라 실시간 자동 갱신이 아니며, 10분 주기로 동기화합니다.</div>
+    <div class="sect-title">실시간 응급실 가용병상</div>
+    <div class="sect-desc" id="realtime-desc">10분 주기로 동기화. 병원이 직접 입력한 시각 기준이라 완전한 실시간은 아닙니다.</div>
     <div id="realtime-beds" style="max-height:420px; overflow-y:auto;"></div>
   </div>
 
@@ -86,9 +86,9 @@
   <details>
     <summary>데이터 한계 및 주의사항</summary>
     <ul>
-      <li><b>실시간 데이터 신뢰도</b>: 응급실 가용병상 정보는 병원이 직접 입력한 시각(hvidate) 기준이라 완전한 실시간이 아니며, 입력이 늦어지면 실제와 차이가 날 수 있습니다.</li>
-      <li><b>기관 규모 미반영</b>: 대형 권역센터와 소형 지역기관을 동일하게 1개로 셉니다(등급 차트로 부분 보정).</li>
-      <li><b>행정경계 집계</b>: 시군 사각지대는 행정 지표이며 실제 이송 접근성과 다를 수 있습니다.</li>
+      <li><b>실시간 가용병상</b>: 병원이 직접 입력한 시각 기준이라 완전한 실시간은 아닙니다.</li>
+      <li><b>기관 규모 미반영</b>: 대형 권역센터와 소형 지역기관을 동일하게 1개로 셉니다.</li>
+      <li><b>행정경계 집계</b>: 시군 사각지대는 행정 지표이며 실제 접근성과 다를 수 있습니다.</li>
       <li><b>인구 지표 한계</b>: 인구가 적은 시군(연천·포천 등)은 10만명당 수치가 과대평가될 수 있어 절대 기관 수와 함께 봐야 합니다.</li>
       <li><b>인구 데이터</b>: 추정치이며 공식 주민등록인구로 교체 시 정확도가 올라갑니다.</li>
     </ul>
@@ -149,7 +149,7 @@ async function loadData() {
 }
 
 const C = {primary:"#0066FF", primaryStrong:"#005EEB", primarySoft:"#9EC5FF",
-  red:"#FF4242", text:"#171719", sub:"#5A5C63", line:"#E1E2E4"};
+  red:"#FF4242", redStrong:"#E52222", text:"#171719", sub:"#5A5C63", line:"#E1E2E4"};
 const FONT = {family:"Pretendard, sans-serif", color:C.text, size:13};
 const baseLayout = {font:FONT, paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)",
   margin:{l:10,r:20,t:10,b:10}, showlegend:false};
@@ -164,9 +164,11 @@ function render(D) {
 
   // 차트1: 형평성 가로 막대. 평균선 제거(평균은 KPI 카드에 표기), 오른쪽 여백 확보로 값 안 잘리게
   const barColors = D.cnt.map(v => v===0 ? C.red : C.primary);
+  const labelColors = D.cnt.map(v => v===0 ? C.redStrong : C.text);
   Plotly.newPlot("chart-equity", [{
     type:"bar", orientation:"h", x:D.per, y:D.sigun,
     marker:{color:barColors}, text:D.per.map(v=>v.toFixed(2)), textposition:"outside", cliponaxis:false,
+    textfont:{color:labelColors},
     hovertemplate:"%{y}<br>인구10만명당 %{x}개<extra></extra>"
   }], Object.assign({}, baseLayout, {
     height:760, margin:{l:20,r:70,t:10,b:45},
@@ -237,6 +239,11 @@ function renderRealtimeBeds(rows) {
     document.getElementById("realtime-desc").textContent =
       `응급의료정보제공(E-Gen) API 기준. 병원별 최종 입력 시각으로부터 최대 ${maxStale}분 전 값입니다. 10분 주기로 동기화합니다.`;
   }
+  const bedStyle = (v) => {
+    if (v === null || v === undefined) return "";
+    if (v <= 0) return "color:var(--red-strong); font-weight:700;";
+    return "color:var(--primary); font-weight:700;";
+  };
   el.innerHTML = `
     <table style="width:100%; border-collapse:collapse; font-size:13px;">
       <thead><tr style="text-align:left; color:var(--text-sub); border-bottom:1px solid var(--line);">
@@ -249,12 +256,11 @@ function renderRealtimeBeds(rows) {
       <tbody>
         ${rows.map(r => {
           const m = minutesAgo(r.hvidate);
-          const ecColor = r.hvec === 0 ? "color:var(--red-strong); font-weight:700;" : "";
           return `<tr style="border-bottom:1px solid var(--line);">
             <td style="padding:6px 8px;">${r.duty_name}</td>
-            <td style="padding:6px 8px; ${ecColor}">${r.hvec ?? "–"}</td>
-            <td style="padding:6px 8px;">${r.hvoc ?? "–"}</td>
-            <td style="padding:6px 8px;">${r.hvgc ?? "–"}</td>
+            <td style="padding:6px 8px; ${bedStyle(r.hvec)}">${r.hvec ?? "–"}</td>
+            <td style="padding:6px 8px; ${bedStyle(r.hvoc)}">${r.hvoc ?? "–"}</td>
+            <td style="padding:6px 8px; ${bedStyle(r.hvgc)}">${r.hvgc ?? "–"}</td>
             <td style="padding:6px 8px; color:var(--text-sub);">${m !== null ? `${m}분 전` : "–"}</td>
           </tr>`;
         }).join("")}
